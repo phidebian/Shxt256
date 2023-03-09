@@ -1,0 +1,8 @@
+extension "txt"
+styletemplate "\x1b[$stylem$text\x1b[m"
+styleseparator ";"
+color "$style"
+
+
+
+ 

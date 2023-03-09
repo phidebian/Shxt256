@@ -1,0 +1,504 @@
+#!/bin/bash
+
+#
+##############################################################################
+#
+# NAME
+#     Shxt256 - source-highlight integration for color X terminals 
+#
+# SYNOPSIS
+#     Shxt256 Command [CommandArg]...
+#
+#     Shxt256 help                           # This help
+#     Shxt256 import        CM-ColorMap.cm   # Import a color map.
+#     Shxt256 new-theme     TH-Theme.th      # Create Theme (To be customised)
+#     Shxt256 gen-style     TH-Theme.th      # Create TH-Style.style from Theme
+#     Shxt256 show-index                     # Show terminal colors by index.
+#     Shxt256 show-colormap TH-ColorMap.cm   # Show the color map ColorMap.
+#     Shxt256 show-style    TH-Style.style   # Show the style Style
+#     Shxt256 gdb link      TH-Style.style   # GDB symlink (hack) 
+#     Shxt256 gdb unlink                     # GDB undo symlink.
+#
+#     Command abbreviation:
+#     h  ==> help
+#     sc ==> show-colormap
+#
+#     CommandArg abbreviation:
+#     We use Uppercase namespace in the install directory to visualize our
+#     shxt256 files vs the regular source-highlight files (*.lang, *.style,
+#     *.outlang) which are all lowercase.
+# 
+#     File names can be given without namespace (CM-, TH-) and without file
+#     file extension (.cm, .th, .style), the context (command) define the
+#     full qualified name.
+#     
+#     new-theme Name ==produce==> TH-Name.th
+#     gen-style Name ==use======> TH-Name.th ==produce==> TH-Name.style
+#
+# DESCRIPTION
+#     Shxt256 is a utility to help the integration of X teminal color capable
+#     with source-highlight.
+#
+#     source-highlight as a design flaw, it hard code few color name to be
+#     used in .style and .outlang file. Because of that, people hack the
+#     color map found in .outlang file to map to color  not related with
+#     their name, then use that color name in their .style file.
+#
+#     With Shxt256, we can define a color map that map color names to their
+#     colors code. A color map file is named CM-ColorMap.cm
+#     The namespace CM- is to visualize shxt256 files vs the regular *.lang
+#     *.style, *.outlang from source-highlight in the install directory.
+#
+#     You can design a color map from scratch or reuse one of the .cm found
+#     in the Shxt256 directory obtained with the 'import' command. You may
+#     augment the import to share yout color map with others.
+#
+#     Next we must create a theme file (.th), a pristine template can be
+#     generated with the new-theme command, this merge all the language
+#     element (LE's) found in the *.lang file. This file must then be
+#     customised to your liking. A theme file reference a color map file
+#     (See File format below)
+#
+#     When a theme file is defined we can generate a style file named after the
+#     theme file, i.e TH-Name.th will produce TH-Name.style (see below)
+#
+#     The TH-Name.style along with Shxt256.outlang can then be used by
+#     source-highlight to render text for color capable terminals (xterm,
+#     gnome-terminal, mate-terminal, terminator, etc...)
+#
+#     GDB as also a design flaw, it use the hard coded name esc.style,
+#     esc.outlang, for its access to source-highlight to X terminals, the
+#     gdb link/unlink command allow to symlink esc.* to your own
+#     TH-Style.style along with Shxt256.outlang.
+#
+# COMMANDS
+#     Shxt256 h|help
+#         Display this help.
+#
+#     Shxt256 i|import [CM-]ColorMap[.cm]
+#         Import the ColorMap.
+#         ColorMap : x11, html, minecraft, roblox
+#         Those color maps are example.
+#
+#     Shxt256 n|new-theme [TH-]Theme[.th]
+#         Produce on pristine Theme.th file that contain a merge of all the
+#         LE's (language elements) declared in *.lang files with the 'style'
+#         set to 'Normal' (no style) for each LE's.
+#         The .th file syntax is the same as a source-highlight .style file
+#         except the 'styles' only provide the theme name as color and the
+#         attributes list is bigger than the one provided by source-highlight
+#         (For instance we have overstrike).
+#         This file must be then customised by hand.
+#
+#     Shxt256 g|gen-style [TH-]Theme[.th] 
+#         Read the TH-Theme.th file and produce the TH-Theme.style file
+#         suitable for source-highlight processing.
+#         The xt256.outlang must be used.
+#
+#     Shxt256 si|show-index
+#         Show the current terminal color rendering for each index 0..255.
+#         This help to choose a color index to setup a CM-ColorMap.cm
+#         configuration file.
+#
+#     Shxt256 sc|show-colormap [CM-]ColorMap[.cm]
+#         Show the rendering of color names defined in the TH-ColorMap.cm.
+#
+#     Shxt256 ss|show-style [TH-]Style[.style] 
+#         Show the rendering of language elements defined in the
+#         TH-Style.style.
+#
+#     Shxt256 gdb link [TH-]Style[.style]
+#         Save esc.style and esc.outlang the symlink TH-Style.style to
+#         esc.style and xt256.outlang to esc.outlang.
+#         When using gdb -tui source file will be rendered with your style.
+#
+#     Shxt256 gdb unlink
+#         Restore esc.* to its original value.
+#
+# COLOR MAP FILE FORMAT
+#     The CM-ColorMap.cm file is a bash file sourced by Shxt256 and as the
+#     following format.
+#     name+=(ColorName) ; color+=(\#123456)   # #RRGGBB are RGB true colors.
+#     name+=(ColorName) ; color+=("#123456") 
+#     name+=(ColorName) ; color+=("@123")     # number @0-255 are xterm
+#                                             # color index.
+#
+#     ColorName are case insensitive, then case duplicates produce undefined
+#     behavior i.e
+#     name+=(Blue) color+=(\#0000ff) \__ Can't predict which one will remains.
+#     name+=(BLUE) color+=(@123)     /
+#
+#     There are some predefined color map (*.cm) yet you can define your own
+#     (See new-theme command)
+#
+# THEME FILE FORMAT
+#     Theme file (Theme.cm) is used to generate TH-Style.style. It must be
+#     manually customised.
+#
+#     The syntax is similar to source-highlight .style file, except
+#     - 1 LE per line (no multiple LE sperated with coma)
+#     - we got more 'attributes' (like double-underlined).
+#
+#     The TH-Theme.cm lines look like this
+#
+#     LE {Normal | Color | bg:Color | Attribute}+ ;
+#
+#     Comment are preserved in the TH-Style.style and start with //   
+#
+#     Customisation:
+#     The line // ColorMap=CM-x11.cm must be updated with a ColorMap of your
+#     choice.
+#
+#     Normal : No color attribute.
+#     Color  : A color name found in the color map (See above)
+#              A #RRGGBB string for direct color coding (sans color map)
+#              A @DDD number 0..255 this is an xterm256 color index.
+#     Attribute : A name in
+#             Normal Bold    Faint       Italicized  Underlined
+#             Blink  Inverse Crossed-Out Doubly-Underlined
+#
+##############################################################################
+
+cd $(dirname $0) # The install dir
+P=$(basename $0)
+export SOURCE_HIGHLIGHT_DATADIR=$PWD
+less 2>/dev/null ||
+{ echo "$0 depend on less(1) to display colors. Package missing." ; exit 1
+}
+source-highlight >/dev/null 2>&1 -V ||
+{ echo "$0 depend on source-highlight(1). Package missing."; exit 1
+}
+PAGER="less -RXe"
+
+function emit-sh-var #--------------------------------------------------------
+{ typeset v="$1" ; shift
+  for i in "$@"
+  do printf 'vardef %s=$%s + "|%s"\n' "$v" "$v" "$i"
+  done
+}
+
+function help #---------------------------------------------------------------
+{ typeset S
+
+  exec 4>/tmp/help.$$ ; unlink /tmp/help.$$
+  { emit-sh-var hlp_script $P
+    emit-sh-var hlp_cmds   help import new-theme gen-style
+    emit-sh-var hlp_cmds   show-index show-colormap show-style gdb link unlink
+    emit-sh-var hlp_prfs   CM- TH-
+    emit-sh-var hlp_args   ColorMap Theme Style Name
+    emit-sh-var hlp_sufs   .cm .th .style .lang .outlang
+  } >&4
+
+  cat /dev/fd/4
+
+  S=${SHXT256:=Help} S=${S%.*} S=${S#*-}
+  S=TH-$S.style
+
+  [ ! -f "$S" ] && echo "$S not found." && exit 1
+  sed -E '/^####/,/^####/!d;s/^# ?//' $0             |
+  source-highlight -s Help -f xt256 --style-file=$S  |
+  $PAGER
+}
+
+function import #-------------------------------------------------------------
+{ case "$1" in
+
+  # ./CM-import.sh html
+  # Popular browser color names.
+  # goto https://htmlcolorcodes.com/color-names/ and [Select All]
+  # paste the result into a file CM-html.txt
+  #./CM-import.sh html
+  # Will read CM-html.txt and produce CM-html.cm
+  html)
+    echo "# List of HTML (browser) Color Names/Codes" >CM-html.cm
+    curl https://htmlcolorcodes.com/color-names/                  |
+    gunzip                                                        |
+    grep -e color-group__title                                    \
+         -e 'td class="color-table__cell color-table__cell--name'  \
+         -e 'td class="color-table__cell color-table__cell--hex'    |
+    sed 's/.*__//;s/.*--//;s/">/ /;s:</.*::'                        |
+    while read a b
+    do
+      case "$a" in
+      title) printf "# $b\n"                 ;;
+      name)  printf "name+=(%-22s) ; " "$b"  ;;
+      hex)   printf color+="(\%s)\n" $b      ;;
+      esac
+    done >>CM-html.cm
+  ;;
+
+  # ./CM-import.sh minecraft
+  # goto  https://htmlcolorcodes.com/minecraft-color-codes/ 
+  # Select all and paste into CM-minecraft.txt
+  #./CM-import.sh minecraft
+  # Will read CM-minecraft.txt and produce CM-minecraft.cm
+  minecraft)
+    echo "# List of Minecraft Color Names/Codes" >CM-minecraft.cm
+    curl https://htmlcolorcodes.com/minecraft-color-codes/ |
+    gunzip                                                 |
+    grep -e '<td.*__cell--name' -e '<td.*__cell--hex'      |
+    sed 's/.*--//;s/ (.*//;s/">/ /;s/<.*//'                |
+    while read a b
+    do
+      case "$a" in
+      name) printf "name+=(%-22s) ; " "${b// /}"  ;;
+      hex)  printf color+="(\%s)\n" "$b"
+      ;;
+      esac    
+    done   >>CM-minecraft.cm
+  ;;
+ 
+
+  # Pickup https://htmlcolorcodes.com/roblox-color-codes/ 
+  # Select all > roblox.txt
+  roblox)
+    echo >CM-roblox.cm "#List of Roblox Color Names/Codes"
+    curl https://htmlcolorcodes.com/roblox-color-codes/ |
+    gunzip                                              |
+    grep -e '<td.*__cell--name' -e '<td.*__cell--motd'  |
+    sed 's/.*--//;s/ (.*//;s/">/ /;s/<.*//;s/[,.]//g'   |
+     sed -r 's/\<./\U&/g'                               |
+    while read a b
+    do
+      case "${a[0]}" in
+      Name) printf "name+=(%-22s) ; " "${b// /}"  ;;
+      Motd) printf color+="(\#%02x%02x%02x)\n" $b
+      ;;
+      esac
+    done >>CM-roblox.cm
+  ;;     
+ 
+  x11)
+    echo >CM-x11.cm "#List of X11 RGB Colors (/usr/share/X11/rgb/txt)"
+    grep '^[ ]*[0-9][^A-Z]*[A-Z]'  /usr/share/X11/rgb.txt  | sort -un |
+    while read w1 w2 w3 w4 w5
+    do printf "name+=(%-22s) ; color+=(\#%02x%02x%02x)\n"  "$w4" $w1 $w2 $w3 
+    done >>CM-x11.cm
+  ;;
+
+  *) sed '/^####/,/^####/!d' $0
+  ;;
+esac
+}
+
+# Wanted to --show-lang-elements on *.lang, but it seems broken.
+# So we use this empirical way that works enough.
+function new-theme # TH-Theme.th ----------------------------------------------
+{ typeset l le
+  typeset t=$1
+
+  t=${t#TH-} t=TH-${t%.th}.th
+
+  echo "// Set a ColorMap.cm to your liking on the next line." >$t
+  echo "// ColorMap=CM-x11.cm"  >>$t
+  echo "// ColorMap=CM-html.cm" >>$t
+  { cat *.lang | grep -E '^[a-z_]+[ \t]*='  | sed 's/[ \t]*=.*//'
+    cat *.lang | grep -E '^[a-z_]+[ \t]+delim' | sed -E 's/[ \t]+delim.*//'
+    cat *.lang |
+        grep -E '^environment[ \t]+[a-z]' |
+        sed  -E 's/environment[ \t]+//;'  |
+        sed  -E 's/[ \t]+.*//'
+    cat *.lang |
+        grep -E '^state[ \t]+[a-z]' |
+        sed  -E 's/state[ \t]+//;' |
+        sed  -E 's/[ \t]+.*//'
+  } | sort -u | while read le
+  do printf '%-20s Normal ;\n' "$le"
+  done >>$t
+
+  echo "Theme $t is created, you may customise it now."
+}
+
+function gen-style # TH-Theme.th ---------------------------------------------
+{ typeset s t c f 
+  typeset l
+
+  [ ! "$1" ] && echo "Need a theme file." && exit 1
+  f=$1 f=${f%.*} f=${f#*-}
+  t=TH-$f.th
+  s=TH-$f.style
+ 
+
+  [ ! -f "$t" ] && echo "$t not found" && exit 1
+
+  # Fetch the color map
+  IFS='=' read f c <<< $(grep '^[^/]*ColorMap=' $t)
+  [ ! "$c" ] && echo "Must uncomment a ColorMap= line in $t" && exit 1
+  c=${c%.*} c=${c#*-}
+  c=CM-$c.cm
+  [ ! -f "$c" ] && echo "$c not found" && exit 1
+  source $c
+
+  # Load the Hash Colors/Attributes
+  typeset -A HCA # Color/Attribute Hash
+  # Load the CM first
+  for((i=0;i<${#name[@]};i++))  
+  { HCA[${name[i]^^}]=${color[i]}
+  }
+  # Then the Attribute (takes precedence over Colors) meaning we can't
+  # get color named after an attribute name.
+  HCA[NORMAL]=0      HCA[BOLD]=1
+  HCA[FAINT]=2       HCA[ITALICIZED]=3
+  HCA[UNDERLINED]=4  HCA[BLINK]=5
+  HCA[INVERSE]=7     HCA[CROSSED-OUT]=9
+  HCA[DOUBLY-UNDERLINED]=21
+
+  # Enter some abbrev in HCA
+  HCA[N]=0  HCA[NORM]=0
+  HCA[B]=1  HCA[BO]=1 
+  HCA[F]=2  HCA[FA]=2 
+  HCA[I]=3  HCA[IT]=3 HCA[ITAL]=3  HCA[ITALIC]=3
+  HCA[U]=4  HCA[UN]=4 HCA[UNDER]=4 HCA[UNDERLINE]=4
+  HCA[BL]=5 HCA[BLK]=5
+  HCA[IN]=7 HCA[INV]=7
+  HCA[C]=9  HCA[CR]=9
+  HCA[DU]=21
+  
+  echo "// DO NOT EDIT THIS FILE." >$s
+  echo "// It was generated by Shxt256" >>$s
+  echo "// from '$t' theme using '$c' colormap." >>$s
+
+  # Read $t and expand it into $s
+  typeset -a w ; typeset -i i ; typeset le att com
+  while read l
+  do
+    [ ! "$l" ] && echo && continue
+    
+    [[ "$l" =~ 'Set a ColorMap' ]] && continue
+    [[ "$l" =~ 'ColorMap='      ]] && continue
+    read -a w <<< "$l"
+    le='' att='' com=''
+    for((i=0;i<${#w[@]};i++))
+    { [ "${w[i]:0:1}" = '/' ] && com="${w[i]}" && continue
+      ((i==0)) && le="${w[0]}"                 && continue
+      [ "$com" ] && com+=" ${w[i]}"            && continue
+      w[i]="${w[i]//;/}" w[i]="${w[i]//\"/}" w[i]="${w[i]^^}"
+      [ ! "${w[i]}" = 'NORMAL' ] && att+=" ${w[i]}"
+    }
+
+    [ "$com" ] && echo "$com" >>$s
+    [ ! "$att" ] && continue # Don't emit Normal LE's (No att mean Normal)     
+
+    # Expand att into xt
+    typeset a x x1 xt r g b bg rgb
+    xt=''
+    for a in $att
+    do
+      bg=0
+      [ "${a:0:3}" = 'BG:' ] &&
+      { bg=1 a="${a:3}"
+      }
+      x="${HCA[$a]}"
+      [ ! "$x" ] && x="$a"
+      x="${x//\"/}"
+      [ "${x:0:3}" = 'bg:' ] && bg=1 && x="${x:3}"
+      x1="${x:0:1}"
+      [ "$x1" = '#' ] &&             # #RRGGBB
+      { r=0x${x:1:2} g=0x${x:3:2} b=0x${x:5:2}
+        ((bg)) && xt+=";48;2" || xt+=";38;2"
+        printf -v rgb ';%d;%d;%d' $r $g $b
+        xt+="$rgb"
+        continue
+      }
+  
+      [ "$x1" = '@' ] &&             # Ndx [0..255]
+      { r=${x:1}
+        ((bg)) && xt+=";48;5" || xt+=";38;5"
+         xt+=";$r"
+         continue
+      }
+
+      [[ "$x1" =~ [0-9] ]] &&       # Attribute#
+      { r="$x" ; xt+=";$x"
+        continue
+      }
+      echo >&2 "Color '$x' not found in '$c'"       
+    done
+    [ "$xt" ] || [ "$com" ] && echo "$le \"${xt:1}\" ; $com"    
+  done <$t >>$s
+
+  echo "$s is generated, you can use it with source-highlight."
+}
+
+function show-index #---------------------------------------------------------
+{ typeset -i i
+  for((i=0;i<256;i++))
+  { printf "\e[38;5;${i}mCOLOR NUM %3d \e[0m "     $i
+    printf "== \e[48;5;${i}mCOLOR NUM %3d \e[0m\n" $i
+  }  | $PAGER
+}
+
+function show-colormap # CM-ColorMap.cm --------------------------------------
+{ typeset cm="$1"
+  typeset -a name color
+  typeset -i r g b
+
+  [ ! "$cm" ] && echo "Need a CM=ColorMap.cm file" && exit 1
+  cm=${cm%.*} cm=${cm#*-}
+  cm=CM-$cm.cm
+  [ ! -f "$cm" ] && echo "ColorMap $cm not found" && exit 1
+  . $cm
+  for((i=0;i<${#name[@]};i++))
+  { c="${color[i]}"
+    printf "[%3d] %-7s : " $i "$c"
+    [ "${c:0:1}" = '#' ] && # Do true color RGB ##############
+    { r=0x${c:1:2} g=0x${c:3:2} b=0x${c:5:2}
+      printf "\e[38;2;$r;$g;${b}mFG %-24s \e[0m "  ${name[i]}
+      printf "== \e[48;2;$r;$g;${b}mBG SAMPLE\e[0m"  
+    }                    || # Do color index. ################
+    { printf "\e[38;5;${i}mFG COLOR SAMPLE \e[0m " 
+      printf "== \e[48;5;${i}mBG COLOR SAMPLE\e[0m"
+    }
+    printf "\n"
+  } | $PAGER
+}
+
+function show-style # TH-Style.style -----------------------------------------
+{ typeset st="$1"
+  typeset le co
+  typeset re='[0-9;]'
+
+  st=${st%.*} st=${st#*-}
+  st=TH-$st.style
+  while read le co
+  do
+    [[ ! "$co" =~ \"([0-9;]+)\" ]] && continue          
+    #echo "le='le' co='${BASH_REMATCH[1]}'"
+    printf "%-20s : \e[0%sm " "$le" "${BASH_REMATCH[1]}"
+    printf "Langage Element SAMPLE\e[0m\n" 
+  done < $st
+}
+
+function do-gdb # TH-Style.style --------------------------------------------
+{ [ ! -f esc.outlang.ori ] && cp esc.outlang esc.outlang.ori
+  [ ! -f esc.style.ori   ] && cp esc.style   esc.style.ori
+  rm -f esc.outlang esc.style
+  
+  typeset p=${1^^} ; shift
+  echo "l='$l' 1='$1'"
+  [ "${p:0:1}" = 'L' ] &&
+  { S="${1%.*}" S=TH-"${S#*-}".style
+    [ ! -f "$S" ] && "Style '$S' not found." && exit 1
+    ln -s $S esc.style ; ln -s xt256.outlang esc.outlang
+  } ||
+  { ln -s esc.style.ori esc.style ; ln -s esc.outlang.ori esc.outlang
+  }
+  ls -l esc.*
+}
+
+# MAIN ######################################################################
+c="$1" ; shift
+case "$c" in
+  [hH]*)      : ;&
+  -*[hH]*)    help ;;
+  [iI]*)      import        "$@" ;;
+  [nN]*)      new-theme     "$@" ;;
+  [gG][dD]*)  do-gdb        "$@" ;;
+  [gG]*)      gen-style     "$@" ;;
+  [sS]*[iI]*) show-index    "$@" ;;
+  [sS]*[cC]*) show-colormap "$@" ;;
+  [sS]*[sS]*) show-style    "$@" ;;
+  *)          echo "Shxt256 command '$c' is not implemented."; exit 1 ;;
+esac
+
+exit 0
