@@ -1,0 +1,95 @@
+# Help.lang
+#
+# Definitions of 'Help' language for very simple documentation markup.
+# This is mainly for shell script (and similar programs) self documentation.
+#
+# USAGE:
+# From inside a progam (shell script) define a set of hlp_* variables (see
+# Help.lang parameters below) to be placed in an anonymous file on fd#4.
+# This fd#4 (/dev/fd/4) is included by this Help.lang file.
+# 
+# Source-highlight should have a -I option to avoid this mess.
+#
+# The program can emit some documentation text on the source-highlight
+# stdin like this
+# 
+# cat text | source-highlight -s Help -f xt256 --style-file=Your.style
+#
+# Help.lang parameters.
+# ---------------------
+# To setup word list from a script, do something along those lines.
+#
+# exec 4>/tmp/hlp.$$ ; unlink /tmp/hlp.$$
+# { printf 'vardef hlp_script=$hlp_script= + "|%s"\n' $ShellVar
+#   printf 'vardef hlp_cmds=$hlp_cmds + "|Cmd1|Cmd1"\n'
+#   printf 'vardef hlp_cmds=$hlp_cmds + "|Cmd2|Cmd3"\n'
+# } >&4
+#
+# Note that any added words to a list must be preceded with |
+#
+# Help.lang variables
+# -------------------
+#
+# hlp_script :
+#     A single word that define the name of the script (program).
+#
+# hlp_cmds :
+#     A list of word for runstring of the form Script Command [Options]
+#
+# hlp_opts :
+#     A list of options names (Sans - or = signs) like "|a|long-a"
+#
+# hlp_args :
+#     A list of arguments that can follow an option like "|FileName"
+#
+# hlp_prfs :
+#     A list of optional prefixes (namespace) that can precede an arg like
+#     "|ns1|ns2" would accept ns1-FileName as arg.
+#
+# hlp-sufs :
+#     A list of optional suffixes that can follow in arg like "|.c|.o"
+#     woul accept FileName.c FileName.o ars arg.
+#
+#
+
+# Must start all list with unmatchable ~ because source-highlight loops
+# on ''
+vardef hlp_script="~"
+vardef hlp_cmds="~"
+vardef hlp_opts="~"
+vardef hlp_args="~"
+vardef hlp_prfs="~"
+vardef hlp_sufs="~"
+
+include "/dev/fd/4"
+
+# Help.lang Language Elements
+# ---------------------------
+#
+# hlp_section:
+#     Match uppercase word that define a section likme man(1)
+hlp_section = '^[A-Z]+([[:blank:]]+[A-Z]+)*'
+
+# hlp_script:
+#     Match the script name.
+hlp_script=$hlp_script
+
+# hlp_cmd:
+#     Match a command found in the $hlp_cmds list.
+hlp_cmd='\b(' + $hlp_cmds + ')'
+
+
+# hlp_opt:
+#     Match an option, if option "|a" is defined in hlp_opts it will match
+#     -a --a a=
+hlp_opt   = '-{1,2}(' + $hlp_opts + ')=?'
+hlp_opt   = '-{0,2}(' + $hlp_opts + ')='
+
+# hlp_arg:
+#     Match an arg found in $hdl_args list, optionally preceded by
+#     prefix found in $hlp_prfs and optionally followed by a suffix found in
+#     #hlp_sufs list.
+hlp_arg='(' + $hlp_prfs + ')'
+hlp_arg='(' + $hlp_args + ')'
+hlp_arg='(' + $hlp_sufs + ')'
+
