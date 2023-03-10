@@ -189,8 +189,6 @@ function help #---------------------------------------------------------------
     emit-sh-var hlp_sufs   .cm .th .style .lang .outlang
   } >&4
 
-  cat /dev/fd/4
-
   S=${SHXT256:=Help} S=${S%.*} S=${S#*-}
   S=TH-$S.style
 
